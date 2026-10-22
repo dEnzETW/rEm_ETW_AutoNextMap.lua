@@ -227,35 +227,118 @@ createToggle("Auto Eat", false, function(v) getgenv().AutoFarm = v end)
 createInput("Speed Value", function(t) getgenv().SpeedValue = tonumber(t) or 60 end)
 createToggle("Run Speed", false, function(v) getgenv().SpeedEnabled = v end)
 
+
 -- Auto Next Map terintegrasi dengan Auto Sell (ETW)
--- Tombol yang dicari adalah tombol kecil di pojok kiri bawah.
--- Skip Maps dipicu setelah permintaan Sell dikirim, bukan dari deteksi Size.
+-- Alur: tombol kecil kiri bawah -> tombol "Lewati" -> pilih salah satu map.
 getgenv().AutoNextMapEnabled = true
+
 local nextMapBusy = false
 local nextMapCooldown = 2.5
 local lastNextMapAt = 0
 
-local function findMapSkipButton()
-    local roots = {}
-    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+local function getGuiRoots()
+    local roots, seen = {}, {}
 
-    if pg then
-        table.insert(roots, pg)
+    local function add(root)
+        if root and not seen[root] then
+            seen[root] = true
+            table.insert(roots, root)
+        end
     end
 
+    add(LocalPlayer:FindFirstChildOfClass("PlayerGui"))
     pcall(function()
-        if gethui then
-            local hui = gethui()
-            if hui then
-                table.insert(roots, hui)
+        if gethui then add(gethui()) end
+    end)
+    pcall(function()
+        add(game:GetService("CoreGui"))
+    end)
+
+    return roots
+end
+
+local function getVisibleButtons()
+    local result, seen = {}, {}
+
+    for _, root in ipairs(getGuiRoots()) do
+        local ok, descendants = pcall(function()
+            return root:GetDescendants()
+        end)
+
+        if ok then
+            for _, obj in ipairs(descendants) do
+                if not seen[obj]
+                    and obj:IsA("GuiButton")
+                    and obj.Visible
+                    and obj.Active
+                    and obj.Parent
+                    and obj.AbsoluteSize.X > 0
+                    and obj.AbsoluteSize.Y > 0 then
+
+                    seen[obj] = true
+                    table.insert(result, obj)
+                end
             end
         end
-    end)
+    end
+
+    return result
+end
+
+local function buttonText(obj)
+    local value = ""
 
     pcall(function()
-        table.insert(roots, game:GetService("CoreGui"))
+        value = tostring(obj.Text or "")
     end)
 
+    if value == "" then
+        pcall(function()
+            value = tostring(obj.Name or "")
+        end)
+    end
+
+    return string.lower(value)
+        :gsub("%s+", " ")
+        :gsub("^%s*(.-)%s*$", "%1")
+end
+
+local function activateMapSkip(target)
+    if not target or not target.Parent
+        or not target.Visible or not target.Active then
+        return false
+    end
+
+    if typeof(firesignal) == "function" then
+        local ok = pcall(function()
+            firesignal(target.Activated)
+        end)
+
+        if ok then return true end
+
+        pcall(function()
+            firesignal(target.MouseButton1Click)
+        end)
+    end
+
+    if typeof(getconnections) == "function" then
+        local ok, fired = pcall(function()
+            for _, connection in ipairs(getconnections(target.Activated)) do
+                if connection.Function then
+                    connection:Fire()
+                    return true
+                end
+            end
+            return false
+        end)
+
+        if ok and fired then return true end
+    end
+
+    return false
+end
+
+local function findCornerSkipButton()
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize
 
@@ -263,61 +346,30 @@ local function findMapSkipButton()
         return nil
     end
 
-    local best = nil
-    local bestScore = -math.huge
-    local checked = {}
+    local best, bestScore = nil, -math.huge
 
-    for _, root in ipairs(roots) do
-        local ok, descendants = pcall(function()
-            return root:GetDescendants()
-        end)
+    for _, obj in ipairs(getVisibleButtons()) do
+        local pos = obj.AbsolutePosition
+        local size = obj.AbsoluteSize
 
-        if ok then
-            for _, obj in ipairs(descendants) do
-                if not checked[obj] then
-                    checked[obj] = true
+        local relX = (pos.X + size.X / 2) / viewport.X
+        local relY = (pos.Y + size.Y / 2) / viewport.Y
+        local relW = size.X / viewport.X
+        local relH = size.Y / viewport.Y
 
-                    if obj:IsA("GuiButton")
-                        and obj.Visible
-                        and obj.Active
-                        and obj.AbsoluteSize.X > 0
-                        and obj.AbsoluteSize.Y > 0 then
+        if relX < 0.16 and relY > 0.82
+            and relW > 0.01 and relW < 0.12
+            and relH > 0.02 and relH < 0.16 then
 
-                        local pos = obj.AbsolutePosition
-                        local size = obj.AbsoluteSize
+            local score = (1 - relX) * 2 + relY - relW - relH
 
-                        local relX =
-                            (pos.X + size.X / 2) / viewport.X
-                        local relY =
-                            (pos.Y + size.Y / 2) / viewport.Y
+            if obj:IsA("ImageButton") then
+                score = score + 0.15
+            end
 
-                        local relW = size.X / viewport.X
-                        local relH = size.Y / viewport.Y
-
-                        if relX < 0.16
-                            and relY > 0.82
-                            and relW > 0.01
-                            and relW < 0.12
-                            and relH > 0.02
-                            and relH < 0.16 then
-
-                            local score =
-                                (1 - relX) * 2
-                                + relY
-                                - relW
-                                - relH
-
-                            if obj:IsA("ImageButton") then
-                                score = score + 0.15
-                            end
-
-                            if score > bestScore then
-                                best = obj
-                                bestScore = score
-                            end
-                        end
-                    end
-                end
+            if score > bestScore then
+                best = obj
+                bestScore = score
             end
         end
     end
@@ -325,67 +377,161 @@ local function findMapSkipButton()
     return best
 end
 
-local function activateMapSkip(target)
-    if not target or not target.Parent or not target.Visible or not target.Active then
-        return false
-    end
-    local fired = false
-    if typeof(firesignal) == "function" then
-        local ok = pcall(function() firesignal(target.Activated) end)
-        fired = ok
-        if not fired and target:IsA("GuiButton") then
-            pcall(function() firesignal(target.MouseButton1Click) end)
+local function findLewatiButton()
+    for _, obj in ipairs(getVisibleButtons()) do
+        local txt = buttonText(obj)
+
+        if txt == "lewati"
+            or txt == "skip"
+            or txt == "lewati peta" then
+            return obj
         end
     end
-    if not fired and typeof(getconnections) == "function" then
-        pcall(function()
-            for _, connection in ipairs(getconnections(target.Activated)) do
-                if connection.Function then
-                    connection:Fire()
-                    fired = true
-                    break
-                end
+
+    return nil
+end
+
+local function findMapChoiceButton(excluded)
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize
+
+    if not viewport then return nil end
+
+    local candidates = {}
+
+    for _, obj in ipairs(getVisibleButtons()) do
+        if obj ~= excluded then
+            local txt = buttonText(obj)
+            local pos = obj.AbsolutePosition
+            local size = obj.AbsoluteSize
+
+            local cx = (pos.X + size.X / 2) / viewport.X
+            local cy = (pos.Y + size.Y / 2) / viewport.Y
+
+            local isMenuLabel =
+                txt == ""
+                or txt:find("pengaturan", 1, true)
+                or txt:find("jeda", 1, true)
+                or txt:find("tidak dihentikan", 1, true)
+                or txt == "lewati"
+                or txt == "skip"
+                or txt:find("lewati peta", 1, true)
+                or txt:find("kembali", 1, true)
+                or txt:find("tutup", 1, true)
+                or txt:find("memuat", 1, true)
+
+            if not isMenuLabel
+                and size.X >= 35 and size.Y >= 18
+                and cx > 0.15 and cx < 0.9
+                and cy > 0.15 and cy < 0.9 then
+
+                table.insert(candidates, {
+                    button = obj,
+                    score = math.abs(cx - 0.5)
+                        + math.abs(cy - 0.5) * 0.7
+                })
             end
-        end)
+        end
     end
-    return fired
+
+    table.sort(candidates, function(a, b)
+        return a.score < b.score
+    end)
+
+    if #candidates > 0 then
+        local limit = math.min(#candidates, 3)
+        return candidates[math.random(1, limit)].button
+    end
+
+    return nil
 end
 
 local function requestNextMapAfterSell()
-    if not getgenv().AutoNextMapEnabled or nextMapBusy then return end
-    if os.clock() - lastNextMapAt < nextMapCooldown then return end
+    if not getgenv().AutoNextMapEnabled or nextMapBusy then
+        return
+    end
+
+    if os.clock() - lastNextMapAt < nextMapCooldown then
+        return
+    end
+
     nextMapBusy = true
+
     task.spawn(function()
-        -- Beri server waktu memproses penjualan dan memperbarui UI.
+        local function finish()
+            nextMapBusy = false
+        end
+
         task.wait(0.8)
+
         if not getgenv().AutoNextMapEnabled then
-            nextMapBusy = false
+            finish()
             return
         end
-        local target = findMapSkipButton()
-        if not target then
-            warn("[rEm Auto Next Map] Tombol pojok kiri bawah tidak ditemukan.")
-            nextMapBusy = false
+
+        local cornerButton = findCornerSkipButton()
+
+        if not cornerButton then
+            warn("[rEm Auto Next Map] Tombol Skip Maps pojok kiri bawah tidak ditemukan.")
+            finish()
             return
         end
-        local targetName = target.Name
-        local sent = activateMapSkip(target)
-        if sent then
-            lastNextMapAt = os.clock()
-            print("[rEm Auto Next Map] Aktivasi dicoba pada tombol: " .. tostring(targetName))
-            -- Hindari klik berulang; siklus berikutnya hanya setelah Auto Sell berikutnya.
-            task.wait(1.2)
-        else
-            warn("[rEm Auto Next Map] Aktivasi tombol gagal.")
+
+        if not activateMapSkip(cornerButton) then
+            warn("[rEm Auto Next Map] Gagal membuka menu Skip Maps.")
+            finish()
+            return
         end
-        nextMapBusy = false
+
+        task.wait(0.7)
+
+        local lewatiButton = findLewatiButton()
+
+        if not lewatiButton then
+            warn('[rEm Auto Next Map] Tombol "Lewati" tidak ditemukan di menu.')
+            finish()
+            return
+        end
+
+        if not activateMapSkip(lewatiButton) then
+            warn('[rEm Auto Next Map] Gagal menekan tombol "Lewati".')
+            finish()
+            return
+        end
+
+        task.wait(0.7)
+
+        local mapButton = findMapChoiceButton(lewatiButton)
+
+        if not mapButton then
+            warn("[rEm Auto Next Map] Pilihan map tidak ditemukan setelah menekan Lewati.")
+            finish()
+            return
+        end
+
+        if not activateMapSkip(mapButton) then
+            warn("[rEm Auto Next Map] Gagal memilih map.")
+            finish()
+            return
+        end
+
+        lastNextMapAt = os.clock()
+
+        print("[rEm Auto Next Map] Pilihan map diklik; menunggu map berikutnya dimuat.")
+
+        task.wait(8)
+        finish()
     end)
 end
 
 createToggle("Auto Next Map", true, function(v)
     getgenv().AutoNextMapEnabled = v
-    if not v then nextMapBusy = false end
+
+    if not v then
+        nextMapBusy = false
+    end
 end)
+
 
 -- Auto Sell by UI bar detection
 getgenv().AutoSellBar = false
