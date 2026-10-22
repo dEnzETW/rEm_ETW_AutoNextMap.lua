@@ -238,42 +238,90 @@ local lastNextMapAt = 0
 local function findMapSkipButton()
     local roots = {}
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-    if pg then table.insert(roots, pg) end
+
+    if pg then
+        table.insert(roots, pg)
+    end
+
     pcall(function()
-        if gethui then table.insert(roots, gethui()) end
+        if gethui then
+            local hui = gethui()
+            if hui then
+                table.insert(roots, hui)
+            end
+        end
     end)
+
     pcall(function()
         table.insert(roots, game:GetService("CoreGui"))
     end)
 
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize
-    if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return nil end
 
-    local best, bestScore = nil, -math.huge
+    if not viewport or viewport.X <= 0 or viewport.Y <= 0 then
+        return nil
+    end
+
+    local best = nil
+    local bestScore = -math.huge
+    local checked = {}
+
     for _, root in ipairs(roots) do
-        local ok, descendants = pcall(function() return root:GetDescendants() end)
+        local ok, descendants = pcall(function()
+            return root:GetDescendants()
+        end)
+
         if ok then
             for _, obj in ipairs(descendants) do
-                if obj:IsA("GuiButton") and obj.Visible and obj.Active then
-                    local pos, size = obj.AbsolutePosition, obj.AbsoluteSize
-                    local relX = (pos.X + size.X / 2) / viewport.X
-                    local relY = (pos.Y + size.Y / 2) / viewport.Y
-                    local relW = size.X / viewport.X
-                    local relH = size.Y / viewport.Y
-                    -- Area tombol kecil kiri bawah yang telah dikonfirmasi pengguna.
-                    if relX < 0.16 and relY > 0.82
-                        and relW > 0.02 and relW < 0.12
-                        and relH > 0.035 and relH < 0.16 then
-                        local score = (1 - relX) + relY
-                        if score > bestScore then
-                            best, bestScore = obj, score
+                if not checked[obj] then
+                    checked[obj] = true
+
+                    if obj:IsA("GuiButton")
+                        and obj.Visible
+                        and obj.Active
+                        and obj.AbsoluteSize.X > 0
+                        and obj.AbsoluteSize.Y > 0 then
+
+                        local pos = obj.AbsolutePosition
+                        local size = obj.AbsoluteSize
+
+                        local relX =
+                            (pos.X + size.X / 2) / viewport.X
+                        local relY =
+                            (pos.Y + size.Y / 2) / viewport.Y
+
+                        local relW = size.X / viewport.X
+                        local relH = size.Y / viewport.Y
+
+                        if relX < 0.16
+                            and relY > 0.82
+                            and relW > 0.01
+                            and relW < 0.12
+                            and relH > 0.02
+                            and relH < 0.16 then
+
+                            local score =
+                                (1 - relX) * 2
+                                + relY
+                                - relW
+                                - relH
+
+                            if obj:IsA("ImageButton") then
+                                score = score + 0.15
+                            end
+
+                            if score > bestScore then
+                                best = obj
+                                bestScore = score
+                            end
                         end
                     end
                 end
             end
         end
     end
+
     return best
 end
 
