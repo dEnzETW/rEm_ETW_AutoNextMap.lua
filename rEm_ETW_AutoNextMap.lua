@@ -446,12 +446,15 @@ local function findMapChoiceButton(excluded)
     return nil
 end
 
+
 local function requestNextMapAfterSell()
     if not getgenv().AutoNextMapEnabled or nextMapBusy then
+        print("[rEm CHECK] STOP: Auto Next Map OFF atau sedang sibuk")
         return
     end
 
     if os.clock() - lastNextMapAt < nextMapCooldown then
+        print("[rEm CHECK] STOP: masih cooldown")
         return
     end
 
@@ -460,69 +463,71 @@ local function requestNextMapAfterSell()
     task.spawn(function()
         local function finish()
             nextMapBusy = false
+            print("[rEm CHECK] Pemeriksaan selesai")
         end
 
+        print("[rEm CHECK 1] Auto Sell memicu Skip Maps")
         task.wait(0.8)
 
-        if not getgenv().AutoNextMapEnabled then
-            finish()
-            return
-        end
-
         local cornerButton = findCornerSkipButton()
-
         if not cornerButton then
-            warn("[rEm Auto Next Map] Tombol Skip Maps pojok kiri bawah tidak ditemukan.")
+            warn("[rEm CHECK GAGAL 1] Tombol pojok kiri bawah tidak ditemukan")
             finish()
             return
         end
+
+        print("[rEm CHECK 2] Tombol pojok kiri bawah ditemukan:", cornerButton:GetFullName())
 
         if not activateMapSkip(cornerButton) then
-            warn("[rEm Auto Next Map] Gagal membuka menu Skip Maps.")
+            warn("[rEm CHECK GAGAL 2] Tombol pojok kiri bawah gagal diaktifkan")
             finish()
             return
         end
 
-        task.wait(0.7)
+        print("[rEm CHECK 3] Perintah aktivasi tombol dikirim")
+        task.wait(1)
 
         local lewatiButton = findLewatiButton()
-
         if not lewatiButton then
-            warn('[rEm Auto Next Map] Tombol "Lewati" tidak ditemukan di menu.')
+            warn("[rEm CHECK GAGAL 3] Tombol Lewati tidak ditemukan")
             finish()
             return
         end
+
+        print("[rEm CHECK 4] Tombol Lewati ditemukan:", lewatiButton:GetFullName())
 
         if not activateMapSkip(lewatiButton) then
-            warn('[rEm Auto Next Map] Gagal menekan tombol "Lewati".')
+            warn("[rEm CHECK GAGAL 4] Tombol Lewati gagal diaktifkan")
             finish()
             return
         end
 
-        task.wait(0.7)
+        print("[rEm CHECK 5] Perintah aktivasi Lewati dikirim")
+        task.wait(1)
 
         local mapButton = findMapChoiceButton(lewatiButton)
-
         if not mapButton then
-            warn("[rEm Auto Next Map] Pilihan map tidak ditemukan setelah menekan Lewati.")
+            warn("[rEm CHECK GAGAL 5] Tombol pilihan map tidak ditemukan")
             finish()
             return
         end
 
+        print("[rEm CHECK 6] Kandidat tombol map:", mapButton:GetFullName())
+
         if not activateMapSkip(mapButton) then
-            warn("[rEm Auto Next Map] Gagal memilih map.")
+            warn("[rEm CHECK GAGAL 6] Pilihan map gagal diaktifkan")
             finish()
             return
         end
 
         lastNextMapAt = os.clock()
-
-        print("[rEm Auto Next Map] Pilihan map diklik; menunggu map berikutnya dimuat.")
+        print("[rEm CHECK 7] Perintah aktivasi pilihan map dikirim")
 
         task.wait(8)
         finish()
     end)
 end
+
 
 createToggle("Auto Next Map", true, function(v)
     getgenv().AutoNextMapEnabled = v
