@@ -615,6 +615,7 @@ RunService.Heartbeat:Connect(function()
             isSelling = true
             local sellSent = pcall(function() s:FireServer() end)
             if sellSent then
+    print("[rEm] Auto Sell memanggil Auto Next Map")
     task.delay(0.75, requestNextMapAfterSell)
                 end
             task.delay(0.5, function() isSelling = false end)
