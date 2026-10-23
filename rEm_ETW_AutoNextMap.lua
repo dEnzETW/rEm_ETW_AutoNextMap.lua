@@ -581,13 +581,19 @@ local function requestNextMapAfterSell()
 end
 
 createToggle("Auto Next Map", true, function(v)
-    getgenv().AutoNextMapEnabled = v
-
+   
+getgenv().AutoNextMapEnabled = v
     if not v then
         nextMapPending = false
     end
 end)
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(3)
 
+    if getgenv().AutoNextMapEnabled then
+        requestNextMapAfterSell()
+    end
+end)
 
 -- Auto Sell by UI bar detection
 getgenv().AutoSellBar = false
