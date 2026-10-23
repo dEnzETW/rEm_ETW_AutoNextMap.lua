@@ -338,58 +338,55 @@ local function activateMapSkip(target)
     return false
 end
 
-local function findCornerSkipButton()
-    local camera = workspace.CurrentCamera
-    local viewport = camera and camera.ViewportSize
 
-    if not viewport or viewport.X <= 0 or viewport.Y <= 0 then
+local function findCornerSkipButton()
+    local player = game:GetService("Players").LocalPlayer
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
         return nil
     end
 
-    local best, bestScore = nil, -math.huge
-
-    for _, obj in ipairs(getVisibleButtons()) do
-        local pos = obj.AbsolutePosition
-        local size = obj.AbsoluteSize
-
-        local relX = (pos.X + size.X / 2) / viewport.X
-        local relY = (pos.Y + size.Y / 2) / viewport.Y
-        local relW = size.X / viewport.X
-        local relH = size.Y / viewport.Y
-
-        if relX < 0.16 and relY > 0.82
-            and relW > 0.01 and relW < 0.12
-            and relH > 0.02 and relH < 0.16 then
-
-            local score = (1 - relX) * 2 + relY - relW - relH
-
-            if obj:IsA("ImageButton") then
-                score = score + 0.15
-            end
-
-            if score > bestScore then
-                best = obj
-                bestScore = score
-            end
-        end
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    if not screenGui then
+        return nil
     end
 
-    return best
-end
+    local adminButtons = screenGui:FindFirstChild("AdminButtons")
+    if not adminButtons then
+        return nil
+    end
 
-local function findLewatiButton()
-    for _, obj in ipairs(getVisibleButtons()) do
-        local txt = buttonText(obj)
-
-        if txt == "lewati"
-            or txt == "skip"
-            or txt == "lewati peta" then
-            return obj
-        end
+    local button = adminButtons:FindFirstChild("ServerOptions")
+    if button and button:IsA("GuiButton")
+        and button.Visible and button.Active then
+        return button
     end
 
     return nil
 end
+
+
+local function findLewatiButton()
+    local player = game:GetService("Players").LocalPlayer
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
+        return nil
+    end
+
+    local screenGui = playerGui:FindFirstChild("ScreenGui")
+    local settings = screenGui and screenGui:FindFirstChild("ServerSettings")
+    local frame = settings and settings:FindFirstChild("Frame")
+    local skip = frame and frame:FindFirstChild("Skip")
+    local button = skip and skip:FindFirstChild("TextButton")
+
+    if button and button:IsA("GuiButton")
+        and button.Visible and button.Active then
+        return button
+    end
+
+    return nil
+end
+
 
 local function findMapChoiceButton(excluded)
     local camera = workspace.CurrentCamera
