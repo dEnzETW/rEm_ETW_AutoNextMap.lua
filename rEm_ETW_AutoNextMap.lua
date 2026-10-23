@@ -444,14 +444,20 @@ local function findMapChoiceButton(excluded)
 end
 
 
+
+local nextMapPending = false
+
 local function requestNextMapAfterSell()
-    if not getgenv().AutoNextMapEnabled or nextMapBusy then
-        print("[rEm CHECK] STOP: Auto Next Map OFF atau sedang sibuk")
+    if not getgenv().AutoNextMapEnabled then
+        return
+    end
+
+    if nextMapBusy then
+        nextMapPending = true
         return
     end
 
     if os.clock() - lastNextMapAt < nextMapCooldown then
-        print("[rEm CHECK] STOP: masih cooldown")
         return
     end
 
@@ -460,71 +466,86 @@ local function requestNextMapAfterSell()
     task.spawn(function()
         local function finish()
             nextMapBusy = false
-            print("[rEm CHECK] Pemeriksaan selesai")
+
+            if nextMapPending and getgenv().AutoNextMapEnabled then
+                nextMapPending = false
+                task.delay(1, requestNextMapAfterSell)
+            end
         end
 
-        print("[rEm CHECK 1] Auto Sell memicu Skip Maps")
+        local function waitForButton(getter, timeout)
+            local started = os.clock()
+
+            repeat
+                if not getgenv().AutoNextMapEnabled then
+                    return nil
+                end
+
+                local button = getter()
+                if button and button.Parent
+                    and button.Visible and button.Active then
+                    return button
+                end
+
+                task.wait(0.25)
+            until os.clock() - started >= timeout
+
+            return nil
+        end
+
         task.wait(0.8)
 
-        local cornerButton = findCornerSkipButton()
+        local cornerButton = waitForButton(findCornerSkipButton, 6)
         if not cornerButton then
-            warn("[rEm CHECK GAGAL 1] Tombol pojok kiri bawah tidak ditemukan")
+            warn("[rEm] Tombol ServerOptions tidak ditemukan")
             finish()
             return
         end
-
-        print("[rEm CHECK 2] Tombol pojok kiri bawah ditemukan:", cornerButton:GetFullName())
 
         if not activateMapSkip(cornerButton) then
-            warn("[rEm CHECK GAGAL 2] Tombol pojok kiri bawah gagal diaktifkan")
+            warn("[rEm] Tombol ServerOptions gagal diaktifkan")
             finish()
             return
         end
 
-        print("[rEm CHECK 3] Perintah aktivasi tombol dikirim")
-        task.wait(1)
+        task.wait(0.5)
 
-        local lewatiButton = findLewatiButton()
+        local lewatiButton = waitForButton(findLewatiButton, 6)
         if not lewatiButton then
-            warn("[rEm CHECK GAGAL 3] Tombol Lewati tidak ditemukan")
+            warn("[rEm] Tombol Lewati tidak ditemukan")
             finish()
             return
         end
-
-        print("[rEm CHECK 4] Tombol Lewati ditemukan:", lewatiButton:GetFullName())
 
         if not activateMapSkip(lewatiButton) then
-            warn("[rEm CHECK GAGAL 4] Tombol Lewati gagal diaktifkan")
+            warn("[rEm] Tombol Lewati gagal diaktifkan")
             finish()
             return
         end
 
-        print("[rEm CHECK 5] Perintah aktivasi Lewati dikirim")
-        task.wait(1)
+        task.wait(0.5)
 
-        local mapButton = findMapChoiceButton(lewatiButton)
+        local mapButton = waitForButton(function()
+            return findMapChoiceButton(lewatiButton)
+        end, 8)
+
         if not mapButton then
-            warn("[rEm CHECK GAGAL 5] Tombol pilihan map tidak ditemukan")
+            warn("[rEm] Tombol pilihan map tidak ditemukan")
             finish()
             return
         end
-
-        print("[rEm CHECK 6] Kandidat tombol map:", mapButton:GetFullName())
 
         if not activateMapSkip(mapButton) then
-            warn("[rEm CHECK GAGAL 6] Pilihan map gagal diaktifkan")
+            warn("[rEm] Pilihan map gagal diaktifkan")
             finish()
             return
         end
 
         lastNextMapAt = os.clock()
-        print("[rEm CHECK 7] Perintah aktivasi pilihan map dikirim")
-
         task.wait(8)
         finish()
     end)
 end
-
 
 createToggle("Auto Next Map", true, function(v)
     getgenv().AutoNextMapEnabled = v
@@ -566,8 +587,8 @@ RunService.Heartbeat:Connect(function()
             isSelling = true
             local sellSent = pcall(function() s:FireServer() end)
             if sellSent then
-                requestNextMapAfterSell()
-            end
+    task.delay(0.75, requestNextMapAfterSell)
+                end
             task.delay(0.5, function() isSelling = false end)
         end
     end
