@@ -468,7 +468,12 @@ local function requestNextMapAfterSell()
     end
 
     if os.clock() - lastNextMapAt < nextMapCooldown then
-        return
+    task.delay(nextMapCooldown, function()
+        if getgenv().AutoNextMapEnabled then
+            requestNextMapAfterSell()
+        end
+    end)
+    return
     end
 
     nextMapBusy = true
