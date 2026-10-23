@@ -229,10 +229,13 @@ createToggle("Run Speed", false, function(v) getgenv().SpeedEnabled = v end)
 
 
 -- Auto Next Map terintegrasi dengan Auto Sell (ETW)
--- Alur: tombol kecil kiri bawah -> tombol "Lewati" -> pilih salah satu map.
+-- Perbaikan: pencarian tombol diulang, menu ditutup setelah memilih map,
+-- dan permintaan berikutnya tidak hilang saat proses sebelumnya berjalan.
+
 getgenv().AutoNextMapEnabled = true
 
 local nextMapBusy = false
+local nextMapPending = false
 local nextMapCooldown = 2.5
 local lastNextMapAt = 0
 
@@ -247,9 +250,13 @@ local function getGuiRoots()
     end
 
     add(LocalPlayer:FindFirstChildOfClass("PlayerGui"))
+
     pcall(function()
-        if gethui then add(gethui()) end
+        if gethui then
+            add(gethui())
+        end
     end)
+
     pcall(function()
         add(game:GetService("CoreGui"))
     end)
@@ -314,7 +321,9 @@ local function activateMapSkip(target)
             firesignal(target.Activated)
         end)
 
-        if ok then return true end
+        if ok then
+            return true
+        end
 
         pcall(function()
             firesignal(target.MouseButton1Click)
@@ -329,70 +338,74 @@ local function activateMapSkip(target)
                     return true
                 end
             end
+
             return false
         end)
 
-        if ok and fired then return true end
+        if ok and fired then
+            return true
+        end
     end
 
     return false
 end
 
-
 local function findCornerSkipButton()
-    local player = game:GetService("Players").LocalPlayer
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then
-        return nil
-    end
+    for _, root in ipairs(getGuiRoots()) do
+        local screenGui = root:FindFirstChild("ScreenGui")
 
-    local screenGui = playerGui:FindFirstChild("ScreenGui")
-    if not screenGui then
-        return nil
-    end
+        if screenGui then
+            local adminButtons = screenGui:FindFirstChild("AdminButtons")
+            local button = adminButtons
+                and adminButtons:FindFirstChild("ServerOptions")
 
-    local adminButtons = screenGui:FindFirstChild("AdminButtons")
-    if not adminButtons then
-        return nil
-    end
-
-    local button = adminButtons:FindFirstChild("ServerOptions")
-    if button and button:IsA("GuiButton")
-        and button.Visible and button.Active then
-        return button
+            if button and button:IsA("GuiButton")
+                and button.Visible and button.Active then
+                return button
+            end
+        end
     end
 
     return nil
 end
-
 
 local function findLewatiButton()
-    local player = game:GetService("Players").LocalPlayer
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then
-        return nil
-    end
+    for _, root in ipairs(getGuiRoots()) do
+        local screenGui = root:FindFirstChild("ScreenGui")
+        local settings = screenGui
+            and screenGui:FindFirstChild("ServerSettings")
+        local frame = settings and settings:FindFirstChild("Frame")
+        local skip = frame and frame:FindFirstChild("Skip")
+        local button = skip and skip:FindFirstChild("TextButton")
 
-    local screenGui = playerGui:FindFirstChild("ScreenGui")
-    local settings = screenGui and screenGui:FindFirstChild("ServerSettings")
-    local frame = settings and settings:FindFirstChild("Frame")
-    local skip = frame and frame:FindFirstChild("Skip")
-    local button = skip and skip:FindFirstChild("TextButton")
-
-    if button and button:IsA("GuiButton")
-        and button.Visible and button.Active then
-        return button
+        if button and button:IsA("GuiButton")
+            and button.Visible and button.Active then
+            return button
+        end
     end
 
     return nil
 end
 
+local function closeServerSettings()
+    for _, root in ipairs(getGuiRoots()) do
+        local screenGui = root:FindFirstChild("ScreenGui")
+        local settings = screenGui
+            and screenGui:FindFirstChild("ServerSettings")
+
+        if settings then
+            settings.Visible = false
+        end
+    end
+end
 
 local function findMapChoiceButton(excluded)
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize
 
-    if not viewport then return nil end
+    if not viewport then
+        return nil
+    end
 
     local candidates = {}
 
@@ -418,7 +431,8 @@ local function findMapChoiceButton(excluded)
                 or txt:find("memuat", 1, true)
 
             if not isMenuLabel
-                and size.X >= 35 and size.Y >= 18
+                and size.X >= 35
+                and size.Y >= 18
                 and cx > 0.15 and cx < 0.9
                 and cy > 0.15 and cy < 0.9 then
 
@@ -443,10 +457,6 @@ local function findMapChoiceButton(excluded)
     return nil
 end
 
-
-
-local nextMapPending = false
-
 local function requestNextMapAfterSell()
     if not getgenv().AutoNextMapEnabled then
         return
@@ -464,7 +474,14 @@ local function requestNextMapAfterSell()
     nextMapBusy = true
 
     task.spawn(function()
+        local finished = false
+
         local function finish()
+            if finished then
+                return
+            end
+
+            finished = true
             nextMapBusy = false
 
             if nextMapPending and getgenv().AutoNextMapEnabled then
@@ -482,6 +499,7 @@ local function requestNextMapAfterSell()
                 end
 
                 local button = getter()
+
                 if button and button.Parent
                     and button.Visible and button.Active then
                     return button
@@ -493,56 +511,66 @@ local function requestNextMapAfterSell()
             return nil
         end
 
-        task.wait(0.8)
+        local ok, err = pcall(function()
+            task.wait(0.8)
 
-        local cornerButton = waitForButton(findCornerSkipButton, 6)
-        if not cornerButton then
-            warn("[rEm] Tombol ServerOptions tidak ditemukan")
-            finish()
-            return
+            local cornerButton =
+                waitForButton(findCornerSkipButton, 10)
+
+            if not cornerButton then
+                warn("[rEm] ServerOptions tidak ditemukan")
+                return
+            end
+
+            if not activateMapSkip(cornerButton) then
+                warn("[rEm] ServerOptions gagal diaktifkan")
+                return
+            end
+
+            task.wait(0.5)
+
+            local lewatiButton =
+                waitForButton(findLewatiButton, 10)
+
+            if not lewatiButton then
+                warn("[rEm] Tombol Lewati tidak ditemukan")
+                return
+            end
+
+            if not activateMapSkip(lewatiButton) then
+                warn("[rEm] Tombol Lewati gagal diaktifkan")
+                return
+            end
+
+            task.wait(0.5)
+
+            local mapButton = waitForButton(function()
+                return findMapChoiceButton(lewatiButton)
+            end, 8)
+
+            if not mapButton then
+                warn("[rEm] Pilihan map tidak ditemukan")
+                return
+            end
+
+            if not activateMapSkip(mapButton) then
+                warn("[rEm] Pilihan map gagal diaktifkan")
+                return
+            end
+
+            lastNextMapAt = os.clock()
+
+            task.wait(1)
+            closeServerSettings()
+
+            -- Beri waktu UI map baru untuk dimuat.
+            task.wait(8)
+        end)
+
+        if not ok then
+            warn("[rEm] Auto Next Map error: " .. tostring(err))
         end
 
-        if not activateMapSkip(cornerButton) then
-            warn("[rEm] Tombol ServerOptions gagal diaktifkan")
-            finish()
-            return
-        end
-
-        task.wait(0.5)
-
-        local lewatiButton = waitForButton(findLewatiButton, 6)
-        if not lewatiButton then
-            warn("[rEm] Tombol Lewati tidak ditemukan")
-            finish()
-            return
-        end
-
-        if not activateMapSkip(lewatiButton) then
-            warn("[rEm] Tombol Lewati gagal diaktifkan")
-            finish()
-            return
-        end
-
-        task.wait(0.5)
-
-        local mapButton = waitForButton(function()
-            return findMapChoiceButton(lewatiButton)
-        end, 8)
-
-        if not mapButton then
-            warn("[rEm] Tombol pilihan map tidak ditemukan")
-            finish()
-            return
-        end
-
-        if not activateMapSkip(mapButton) then
-            warn("[rEm] Pilihan map gagal diaktifkan")
-            finish()
-            return
-        end
-
-        lastNextMapAt = os.clock()
-        task.wait(8)
         finish()
     end)
 end
@@ -551,7 +579,7 @@ createToggle("Auto Next Map", true, function(v)
     getgenv().AutoNextMapEnabled = v
 
     if not v then
-        nextMapBusy = false
+        nextMapPending = false
     end
 end)
 
