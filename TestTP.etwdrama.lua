@@ -257,40 +257,108 @@ toggle.Activated:Connect(function()
 end)
 
 -- LOOP A: TP Farm only. No Grab/Eat calls in this loop.
+-- If a teleport produces no chunk and no size progress, return to the saved
+-- starting position and immediately search for a different target.
 task.spawn(function()
     local TELEPORT_INTERVAL = 10
+    local NO_OBJECT_TIMEOUT = 4.0
     local lastTeleportAt = 0
+    local pendingTargetAt = nil
+    local sizeBeforeTarget = nil
+    local farmStartCFrame = nil
+    local lastStatusText = ""
+
+    local function setStatus(message)
+        if status and status.Parent and message ~= lastStatusText then
+            lastStatusText = message
+            status.Text = message
+        end
+    end
+
+    local function getObservedSize(char)
+        local charSizeObj = char and char:FindFirstChild("Size")
+        local charSize = charSizeObj and tonumber(charSizeObj.Value) or 0
+        local stats = player:FindFirstChild("leaderstats")
+        local statSizeObj = stats and stats:FindFirstChild("Size")
+        local statSize = statSizeObj and tonumber(statSizeObj.Value) or 0
+        return math.max(charSize, statSize)
+    end
 
     while gui.Parent do
-        if states.randomTPFarm and os.clock() - lastTeleportAt >= TELEPORT_INTERVAL then
+        if states.randomTPFarm then
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local currentChunk = char and char:FindFirstChild("CurrentChunk")
 
             if char and hrp and hum and hum.Health > 0 then
-                local targetPart, isGround = getRandomEdiblePart()
-                if targetPart and targetPart.Parent then
-                    local partPos = targetPart.Position
-                    local standPos
-                    local lookTarget
+                if not farmStartCFrame then
+                    farmStartCFrame = hrp.CFrame
+                end
 
-                    if isGround then
-                        standPos = partPos + Vector3.new(
-                            math.random(-1, 1), hum.HipHeight + 0.2,
-                            math.random(-1, 1)
-                        )
-                        lookTarget = partPos - Vector3.new(0, 2, 0)
+                -- Check whether the most recent teleport actually yielded progress.
+                if pendingTargetAt and os.clock() - pendingTargetAt >= NO_OBJECT_TIMEOUT then
+                    local hasChunk = currentChunk and currentChunk.Value ~= nil
+                    local sizeNow = getObservedSize(char)
+                    local sizeIncreased = sizeBeforeTarget and sizeNow > sizeBeforeTarget + 0.001
+
+                    if not hasChunk and not sizeIncreased then
+                        setStatus("No object detected — returning to start...")
+                        if farmStartCFrame and hrp.Parent then
+                            hrp.CFrame = farmStartCFrame
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                            hrp.AssemblyAngularVelocity = Vector3.zero
+                        end
+
+                        pendingTargetAt = nil
+                        sizeBeforeTarget = nil
+                        -- Search for another target immediately; keep the 10s interval
+                        -- for normal successful cycles.
+                        lastTeleportAt = os.clock() - TELEPORT_INTERVAL
+                        task.wait(0.25)
+                        setStatus("TP: ON | EAT: ON | SELL: ON")
                     else
-                        standPos = partPos + Vector3.new(0, hum.HipHeight + 0.5, 2.5)
-                        lookTarget = Vector3.new(partPos.X, standPos.Y, partPos.Z)
+                        -- A chunk is still active or size progressed, so don't classify
+                        -- this target as a failure.
+                        pendingTargetAt = nil
+                        sizeBeforeTarget = nil
                     end
+                end
 
-                    hrp.CFrame = CFrame.new(standPos, lookTarget)
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    lastTeleportAt = os.clock()
+                if not pendingTargetAt and os.clock() - lastTeleportAt >= TELEPORT_INTERVAL then
+                    local targetPart, isGround = getRandomEdiblePart()
+                    if targetPart and targetPart.Parent then
+                        local partPos = targetPart.Position
+                        local standPos
+                        local lookTarget
+
+                        if isGround then
+                            standPos = partPos + Vector3.new(
+                                math.random(-1, 1), hum.HipHeight + 0.2,
+                                math.random(-1, 1)
+                            )
+                            lookTarget = partPos - Vector3.new(0, 2, 0)
+                        else
+                            standPos = partPos + Vector3.new(0, hum.HipHeight + 0.5, 2.5)
+                            lookTarget = Vector3.new(partPos.X, standPos.Y, partPos.Z)
+                        end
+
+                        hrp.CFrame = CFrame.new(standPos, lookTarget)
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                        lastTeleportAt = os.clock()
+                        pendingTargetAt = lastTeleportAt
+                        sizeBeforeTarget = getObservedSize(char)
+                        setStatus("TP: ON | checking target...")
+                    else
+                        setStatus("TP: ON | no target found, retrying...")
+                        lastTeleportAt = os.clock() - TELEPORT_INTERVAL + 1
+                    end
                 end
             end
+        else
+            pendingTargetAt = nil
+            sizeBeforeTarget = nil
         end
         task.wait(0.05)
     end
