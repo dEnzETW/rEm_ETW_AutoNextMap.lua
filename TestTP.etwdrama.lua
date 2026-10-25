@@ -256,73 +256,18 @@ toggle.Activated:Connect(function()
     updateUI()
 end)
 
--- Original RAW farm loop, isolated from the larger hub.
+-- LOOP A: TP Farm only. No Grab/Eat calls in this loop.
 task.spawn(function()
-    local localGrab = ReplicatedStorage:WaitForChild("LocalEvents"):WaitForChild("Grab")
-    local localEat = ReplicatedStorage:WaitForChild("LocalEvents"):WaitForChild("Eat")
-    local lastActivityTime = os.clock()
-    local wasFarming = false
+    local TELEPORT_INTERVAL = 10
+    local lastTeleportAt = 0
 
     while gui.Parent do
-        if states.randomTPFarm then
-            if not wasFarming then
-                wasFarming = true
-                lastActivityTime = os.clock()
-            end
-
-            -- Original RAW watchdog behavior retained for baseline comparison.
-            if os.clock() - lastActivityTime >= 10 then
-                status.Text = "Farm stuck! Restarting in 3s..."
-                states.randomTPFarm = false
-                updateUI()
-
-                local char = player.Character
-                if char then
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hum = char:FindFirstChild("Humanoid")
-                    if hrp then
-                        hrp.Anchored = false
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                    end
-                    if hum then hum:ChangeState(Enum.HumanoidStateType.Running) end
-                end
-
-                task.wait(3)
-                if gui.Parent then
-                    states.randomTPFarm = true
-                    lastActivityTime = os.clock()
-                    updateUI()
-                    status.Text = "Status: ON | tpDelay: 0.05s"
-                end
-            end
-
+        if states.randomTPFarm and os.clock() - lastTeleportAt >= TELEPORT_INTERVAL then
             local char = player.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local currentChunkVal = char and char:FindFirstChild("CurrentChunk")
-            local events = getCharEvents()
 
-            if char and hrp and hum and hum.Health > 0 and currentChunkVal and events then
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-
-                if states.autoSell and isInventoryFull() then
-                    if currentChunkVal.Value ~= nil then
-                        if events.ChunkLoaded then events.ChunkLoaded:FireServer(currentChunkVal.Value) end
-                        if events.Eat then events.Eat:FireServer() end
-                        local startEat = os.clock()
-                        while currentChunkVal.Value ~= nil and os.clock() - startEat < 0.3 do
-                            task.wait(0.02)
-                        end
-                    end
-                    executeSell()
-                    lastActivityTime = os.clock()
-                    local resetAt = os.clock()
-                    while isInventoryFull() and os.clock() - resetAt < 1.2 do
-                        task.wait(0.05)
-                    end
-                    task.wait(0.1)
-                end
-
+            if char and hrp and hum and hum.Health > 0 then
                 local targetPart, isGround = getRandomEdiblePart()
                 if targetPart and targetPart.Parent then
                     local partPos = targetPart.Position
@@ -330,7 +275,10 @@ task.spawn(function()
                     local lookTarget
 
                     if isGround then
-                        standPos = partPos + Vector3.new(math.random(-1, 1), hum.HipHeight + 0.2, math.random(-1, 1))
+                        standPos = partPos + Vector3.new(
+                            math.random(-1, 1), hum.HipHeight + 0.2,
+                            math.random(-1, 1)
+                        )
                         lookTarget = partPos - Vector3.new(0, 2, 0)
                     else
                         standPos = partPos + Vector3.new(0, hum.HipHeight + 0.5, 2.5)
@@ -340,48 +288,48 @@ task.spawn(function()
                     hrp.CFrame = CFrame.new(standPos, lookTarget)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-
-                    task.wait(states.tpDelay)
-
-                    if currentChunkVal.Value == nil then
-                        localGrab:Fire()
-                        local grabTimeout = os.clock()
-                        while currentChunkVal.Value == nil and os.clock() - grabTimeout < 0.35 do
-                            task.wait(0.02)
-                        end
-
-                        if currentChunkVal.Value == nil and events.Grab then
-                            events.Grab:FireServer(false, false, false)
-                            task.wait(0.05)
-                        end
-                    end
-
-                    local held = currentChunkVal.Value
-                    if held and held.Parent then
-                        lastActivityTime = os.clock()
-                        if events.ChunkLoaded then events.ChunkLoaded:FireServer(held) end
-                        task.wait(0.02)
-                        localEat:Fire()
-
-                        local eatTimeout = os.clock()
-                        while currentChunkVal.Value ~= nil and os.clock() - eatTimeout < 0.35 do
-                            task.wait(0.02)
-                        end
-                        lastActivityTime = os.clock()
-                    end
-
-                    local anchorTimeout = os.clock()
-                    while hrp.Anchored and os.clock() - anchorTimeout < 0.25 do
-                        task.wait(0.02)
-                    end
-                else
-                    task.wait(0.1)
+                    lastTeleportAt = os.clock()
                 end
             end
-        else
-            wasFarming = false
         end
-        task.wait(0.02)
+        task.wait(0.05)
+    end
+end)
+
+-- LOOP B: independent Grab/Eat cadence, not tied to teleport timing.
+-- Uses the local-event pattern found in the supplied RAW/rEm-derived source.
+task.spawn(function()
+    local localEvents = ReplicatedStorage:WaitForChild("LocalEvents")
+    local localGrab = localEvents:WaitForChild("Grab")
+    local localEat = localEvents:WaitForChild("Eat")
+
+    while gui.Parent do
+        if states.randomTPFarm then
+            local char = player.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if char and hum and hum.Health > 0 then
+                pcall(function() localGrab:Fire() end)
+                pcall(function() localEat:Fire() end)
+            end
+            task.wait()
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+-- LOOP C: auto-sell independently checks whether the inventory bar is full.
+task.spawn(function()
+    local lastSellAt = 0
+    while gui.Parent do
+        if states.randomTPFarm and states.autoSell and isInventoryFull()
+            and os.clock() - lastSellAt >= 0.8 then
+            lastSellAt = os.clock()
+            pcall(executeSell)
+            task.wait(0.25)
+        else
+            task.wait(0.1)
+        end
     end
 end)
 
