@@ -1,7 +1,11 @@
-
--- ETW.DRAMA - RAW TP FARM STANDALONE TEST
--- Draggable panel + target recovery + Auto Sell
--- Separate test script; does not edit Revisi 11.
+--[[
+ETW.DRAMA - RAW TP FARM STANDALONE TEST
+Purpose: isolate the TP Farm behavior from the user's original RAW source.
+This is a separate test script; it does not edit ETW.DRAMA Revisi 11.
+Auto EAT is not included as a separate feature.
+Condition-based recovery: no regular 10-second teleport; search for a new food target after 1 second without eating progress.
+Grab/Eat cadence, Auto Sell, and draggable panel are retained.
+]]
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -53,7 +57,6 @@ local function getCharEvents()
 end
 
 local isFullServerFlag = false
-
 local function hookServerEatError()
     local char = player.Character
     if not char then return end
@@ -64,9 +67,7 @@ local function hookServerEatError()
         end)
     end
 end
-
 hookServerEatError()
-
 player.CharacterAdded:Connect(function()
     task.wait(1)
     hookServerEatError()
@@ -78,33 +79,26 @@ local function isInventoryFull()
     local pg = player:FindFirstChild("PlayerGui")
     local screen = pg and pg:FindFirstChild("ScreenGui")
     local sellGui = screen and screen:FindFirstChild("Sell")
-
     if sellGui then
         local warn = sellGui:FindFirstChild("WarningText")
         if warn and warn.Visible and warn.TextTransparency < 0.5 then
             return true
         end
-
         local sellText = sellGui:FindFirstChild("SellText")
         if sellText and sellText.Visible then return true end
-
         local bar = sellGui:FindFirstChild("ProgressBar")
         if bar and bar.Size.X.Scale >= 0.98 then return true end
     end
-
     return false
 end
 
 local function executeSell()
     local events = getCharEvents()
-    if events and events.Sell then
-        events.Sell:FireServer()
-    end
+    if events and events.Sell then events.Sell:FireServer() end
 
     local pg = player:FindFirstChild("PlayerGui")
     local screen = pg and pg:FindFirstChild("ScreenGui")
     local sellGui = screen and screen:FindFirstChild("Sell")
-
     if sellGui then
         local btn = sellGui:FindFirstChild("SellButton")
         if btn and typeof(firesignal) == "function" then
@@ -112,28 +106,25 @@ local function executeSell()
             firesignal(btn.MouseButton1Click)
         end
     end
-
     isFullServerFlag = false
 end
 
 local function isGroundPart(part)
     if not part or not part:IsA("BasePart") then return false end
-    if GROUND_MATERIALS[part.Material] then return true end
+    if part.Material and GROUND_MATERIALS[part.Material] then return true end
 
     local lowerName = string.lower(part.Name)
     for _, keyword in ipairs(GROUND_KEYWORDS) do
-        if string.find(lowerName, keyword, 1, true) then
-            return true
-        end
+        if string.find(lowerName, keyword, 1, true) then return true end
     end
 
     if part.Size.Y <= 5 and (part.Size.X >= 8 or part.Size.Z >= 8) then
         return true
     end
-
     return false
 end
 
+-- Target selection copied from the supplied RAW source.
 local function getRandomEdiblePart()
     local map = Workspace:FindFirstChild("Map")
     if not map then return nil end
@@ -144,7 +135,6 @@ local function getRandomEdiblePart()
     local char = player.Character
     local sizeObj = char and char:FindFirstChild("Size")
     local rawSize = sizeObj and sizeObj.Value or 1
-
     local stats = player:FindFirstChild("leaderstats")
     local leaderSizeObj = stats and stats:FindFirstChild("Size")
     local leaderSize = leaderSizeObj and leaderSizeObj.Value or rawSize
@@ -155,7 +145,6 @@ local function getRandomEdiblePart()
 
     for _ = 1, 40 do
         local randomObj = allDescendants[math.random(1, #allDescendants)]
-
         if randomObj:IsA("BasePart")
             and randomObj.Name ~= "Bedrock"
             and randomObj.Name ~= "Barrier"
@@ -193,7 +182,7 @@ local function getRandomEdiblePart()
     return fallbackPart, false
 end
 
--- UI
+-- Minimal standalone panel: start/stop the RAW TP Farm test.
 local CYAN = Color3.fromRGB(0, 235, 255)
 local DARK = Color3.fromRGB(8, 15, 22)
 local WHITE = Color3.fromRGB(235, 250, 255)
@@ -213,9 +202,7 @@ panel.BackgroundTransparency = 0.06
 panel.BorderSizePixel = 0
 panel.Active = true
 panel.Parent = gui
-
 Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
-
 local stroke = Instance.new("UIStroke")
 stroke.Color = CYAN
 stroke.Thickness = 1.5
@@ -232,25 +219,27 @@ title.TextColor3 = CYAN
 title.Text = "RAW TP FARM TEST  •  DRAG"
 title.Parent = panel
 
--- Draggable on mobile and desktop: drag the title area.
+-- Drag panel with mouse or touchscreen by holding the title area.
+-- Uses InputChanged rather than deprecated Frame.Draggable.
 do
     local dragging = false
+    local dragInput = nil
     local dragStart = nil
     local startPosition = nil
 
     title.Active = true
-
     title.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
-
             dragging = true
             dragStart = input.Position
             startPosition = panel.Position
+            dragInput = input
 
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
+                    dragInput = nil
                 end
             end)
         end
@@ -258,10 +247,8 @@ do
 
     UserInputService.InputChanged:Connect(function(input)
         if not dragging then return end
-
         if input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch then
-
             local delta = input.Position - dragStart
             panel.Position = UDim2.new(
                 startPosition.X.Scale,
@@ -281,7 +268,7 @@ status.Font = Enum.Font.Gotham
 status.TextSize = 11
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.TextColor3 = WHITE
-status.Text = "TP: OFF"
+status.Text = "Status: OFF | tpDelay: 0.05s"
 status.Parent = panel
 
 local toggle = Instance.new("TextButton")
@@ -294,22 +281,19 @@ toggle.TextSize = 13
 toggle.Text = "START TP FARM"
 toggle.AutoButtonColor = true
 toggle.Parent = panel
-
 Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 7)
-
 local toggleStroke = Instance.new("UIStroke")
 toggleStroke.Color = CYAN
 toggleStroke.Thickness = 1
 toggleStroke.Parent = toggle
 
 local function updateUI()
-    status.Text = states.randomTPFarm
-        and "TP: ON | checking target..."
-        or "TP: OFF"
-
-    toggle.Text = states.randomTPFarm
-        and "STOP TP FARM"
-        or "START TP FARM"
+    if not states.randomTPFarm then
+        status.Text = "TP: OFF"
+    else
+        status.Text = "TP: ON | checking target..."
+    end
+    toggle.Text = states.randomTPFarm and "STOP TP FARM" or "START TP FARM"
 end
 
 toggle.Activated:Connect(function()
@@ -317,17 +301,20 @@ toggle.Activated:Connect(function()
     updateUI()
 end)
 
--- LOOP A: teleport every 10 seconds.
--- If the target shows no progress, return to the starting position
--- and search for another target immediately.
+-- LOOP A: condition-based recovery only.
+-- No regular 10-second target teleports. Search for a different map object
+-- after 2 seconds without eating progress; allow a short load window after teleport.
 task.spawn(function()
-    local TELEPORT_INTERVAL = 10
-    local NO_OBJECT_TIMEOUT = 4.0
+    local NO_PROGRESS_TIMEOUT = 2.0
+    local CHECK_INTERVAL = 0.05
+    local RECOVERY_COOLDOWN = 0.75
 
-    local lastTeleportAt = 0
-    local pendingTargetAt = nil
-    local sizeBeforeTarget = nil
-    local farmStartCFrame = nil
+    local lastProgressAt = os.clock()
+    local lastObservedSize = 0
+    local recoveryBusy = false
+    local lastRecoveryAt = 0
+    local fallbackCFrame = nil
+    local lastRecoveryTarget = nil
     local lastStatusText = ""
 
     local function setStatus(message)
@@ -340,13 +327,52 @@ task.spawn(function()
     local function getObservedSize(char)
         local charSizeObj = char and char:FindFirstChild("Size")
         local charSize = charSizeObj and tonumber(charSizeObj.Value) or 0
-
         local stats = player:FindFirstChild("leaderstats")
         local statSizeObj = stats and stats:FindFirstChild("Size")
         local statSize = statSizeObj and tonumber(statSizeObj.Value) or 0
-
         return math.max(charSize, statSize)
     end
+
+    local function getRespawnCFrame(char, hrp)
+        -- Prefer a real SpawnLocation in Workspace, nearest to the character.
+        local bestSpawn = nil
+        local bestDistance = math.huge
+
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("SpawnLocation") then
+                local distance = (obj.Position - hrp.Position).Magnitude
+                if distance < bestDistance then
+                    bestDistance = distance
+                    bestSpawn = obj
+                end
+            end
+        end
+
+        if bestSpawn then
+            return bestSpawn.CFrame + Vector3.new(0, 4, 0)
+        end
+
+        -- If this game has no exposed SpawnLocation, use the character's
+        -- recorded spawn/initial position as a safe fallback.
+        return fallbackCFrame
+    end
+
+    local function refreshCharacterBaseline(char, hrp)
+        fallbackCFrame = fallbackCFrame or hrp.CFrame
+        lastObservedSize = getObservedSize(char)
+        lastProgressAt = os.clock()
+    end
+
+    player.CharacterAdded:Connect(function(char)
+        task.spawn(function()
+            local hrp = char:WaitForChild("HumanoidRootPart", 10)
+            if hrp then
+                fallbackCFrame = hrp.CFrame
+                lastObservedSize = getObservedSize(char)
+                lastProgressAt = os.clock()
+            end
+        end)
+    end)
 
     while gui.Parent do
         if states.randomTPFarm then
@@ -356,90 +382,87 @@ task.spawn(function()
             local currentChunk = char and char:FindFirstChild("CurrentChunk")
 
             if char and hrp and hum and hum.Health > 0 then
-                if not farmStartCFrame then
-                    farmStartCFrame = hrp.CFrame
+                if not fallbackCFrame then
+                    refreshCharacterBaseline(char, hrp)
                 end
 
-                if pendingTargetAt
-                    and os.clock() - pendingTargetAt >= NO_OBJECT_TIMEOUT then
+                local sizeNow = getObservedSize(char)
+                local hasChunk = currentChunk and currentChunk.Value ~= nil
 
-                    local hasChunk = currentChunk and currentChunk.Value ~= nil
-                    local sizeNow = getObservedSize(char)
-                    local sizeIncreased = sizeBeforeTarget
-                        and sizeNow > sizeBeforeTarget + 0.001
+                -- Size increase or an active chunk counts as progress and
+                -- resets the no-progress watchdog.
+                if sizeNow > lastObservedSize + 0.001 then
+                    lastObservedSize = sizeNow
+                    lastProgressAt = os.clock()
+                    setStatus("TP: ON | eating...")
+                elseif hasChunk then
+                    lastProgressAt = os.clock()
+                    setStatus("TP: ON | eating...")
+                elseif os.clock() - lastProgressAt >= NO_PROGRESS_TIMEOUT
+                    and not recoveryBusy
+                    and os.clock() - lastRecoveryAt >= RECOVERY_COOLDOWN then
 
-                    if not hasChunk and not sizeIncreased then
-                        setStatus("No object detected - returning...")
+                    recoveryBusy = true
+                    lastRecoveryAt = os.clock()
+                    setStatus("No progress for 2s — searching food...")
 
-                        if farmStartCFrame and hrp.Parent then
-                            hrp.CFrame = farmStartCFrame
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                            hrp.AssemblyAngularVelocity = Vector3.zero
+                    -- Prefer a different still-present candidate. The game's
+                    -- exact edible marker is not exposed by this standalone scan,
+                    -- so the candidate is heuristic and must be tested in-game.
+                    local target = nil
+                    for attempt = 1, 8 do
+                        local candidate = getRandomEdiblePart()
+                        if candidate and candidate.Parent and candidate:IsDescendantOf(Workspace)
+                            and candidate ~= lastRecoveryTarget then
+                            target = candidate
+                            break
                         end
-
-                        pendingTargetAt = nil
-                        sizeBeforeTarget = nil
-                        lastTeleportAt = os.clock() - TELEPORT_INTERVAL
-
-                        task.wait(0.25)
-                        setStatus("TP: ON | checking target...")
-                    else
-                        pendingTargetAt = nil
-                        sizeBeforeTarget = nil
                     end
-                end
 
-                if not pendingTargetAt
-                    and os.clock() - lastTeleportAt >= TELEPORT_INTERVAL then
-
-                    local targetPart, isGround = getRandomEdiblePart()
-
-                    if targetPart and targetPart.Parent then
-                        local partPos = targetPart.Position
-                        local standPos
-                        local lookTarget
-
-                        if isGround then
-                            standPos = partPos + Vector3.new(
-                                math.random(-1, 1),
-                                hum.HipHeight + 0.2,
-                                math.random(-1, 1)
-                            )
-                            lookTarget = partPos - Vector3.new(0, 2, 0)
-                        else
-                            standPos = partPos
-                                + Vector3.new(0, hum.HipHeight + 0.5, 2.5)
-                            lookTarget = Vector3.new(
-                                partPos.X, standPos.Y, partPos.Z
-                            )
-                        end
-
-                        hrp.CFrame = CFrame.new(standPos, lookTarget)
+                    if target and hrp.Parent then
+                        lastRecoveryTarget = target
+                        local lift = math.max((target.Size.Y * 0.5) + 3, 4)
+                        hrp.CFrame = target.CFrame + Vector3.new(0, lift, 0)
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
-
-                        lastTeleportAt = os.clock()
-                        pendingTargetAt = lastTeleportAt
-                        sizeBeforeTarget = getObservedSize(char)
-
-                        setStatus("TP: ON | checking target...")
+                        setStatus("TP: ON | loading target...")
+                        task.wait(0.8)
+                        setStatus("TP: ON | trying to eat...")
                     else
-                        setStatus("TP: ON | no target found, retrying...")
-                        lastTeleportAt = os.clock() - TELEPORT_INTERVAL + 1
+                        setStatus("No target found — rescanning...")
+                        task.wait(0.5)
                     end
+
+                    -- Reset the watchdog after the scan/teleport. Never loop
+                    -- back to a fixed spawn point just because food is missing.
+                    local charNow = player.Character
+                    local hrpNow = charNow and charNow:FindFirstChild("HumanoidRootPart")
+                    if charNow and hrpNow then
+                        fallbackCFrame = fallbackCFrame or hrpNow.CFrame
+                        lastObservedSize = getObservedSize(charNow)
+                    end
+                    lastProgressAt = os.clock()
+                    recoveryBusy = false
+                    -- Keep the stage message briefly meaningful; the next loop
+                    -- will switch to eating/waiting based on actual game signals.
+                elseif not hasChunk then
+                    setStatus("TP: ON | waiting for food...")
                 end
             end
         else
-            pendingTargetAt = nil
-            sizeBeforeTarget = nil
+            lastProgressAt = os.clock()
+            local char = player.Character
+            if char then lastObservedSize = getObservedSize(char) end
+            recoveryBusy = false
             setStatus("TP: OFF")
         end
 
-        task.wait(0.05)
+        task.wait(CHECK_INTERVAL)
     end
 end)
 
--- LOOP B: independent Grab/Eat loop.
+-- LOOP B: independent Grab/Eat cadence, not tied to teleport timing.
+-- Uses the local-event pattern found in the supplied RAW/rEm-derived source.
 task.spawn(function()
     local localEvents = ReplicatedStorage:WaitForChild("LocalEvents")
     local localGrab = localEvents:WaitForChild("Grab")
@@ -449,17 +472,10 @@ task.spawn(function()
         if states.randomTPFarm then
             local char = player.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-
             if char and hum and hum.Health > 0 then
-                pcall(function()
-                    localGrab:Fire()
-                end)
-
-                pcall(function()
-                    localEat:Fire()
-                end)
+                pcall(function() localGrab:Fire() end)
+                pcall(function() localEat:Fire() end)
             end
-
             task.wait()
         else
             task.wait(0.1)
@@ -467,16 +483,12 @@ task.spawn(function()
     end
 end)
 
--- LOOP C: Auto Sell when the inventory is full.
+-- LOOP C: auto-sell independently checks whether the inventory bar is full.
 task.spawn(function()
     local lastSellAt = 0
-
     while gui.Parent do
-        if states.randomTPFarm
-            and states.autoSell
-            and isInventoryFull()
+        if states.randomTPFarm and states.autoSell and isInventoryFull()
             and os.clock() - lastSellAt >= 0.8 then
-
             lastSellAt = os.clock()
             pcall(executeSell)
             task.wait(0.25)
@@ -486,7 +498,7 @@ task.spawn(function()
     end
 end)
 
--- Close button.
+-- Close button / unload cleanup.
 local close = Instance.new("TextButton")
 close.Size = UDim2.fromOffset(24, 22)
 close.Position = UDim2.new(1, -29, 0, 5)
@@ -496,7 +508,6 @@ close.TextColor3 = WHITE
 close.Font = Enum.Font.GothamBold
 close.TextSize = 18
 close.Parent = panel
-
 close.Activated:Connect(function()
     states.randomTPFarm = false
     gui:Destroy()
