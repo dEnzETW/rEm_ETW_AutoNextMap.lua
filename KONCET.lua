@@ -6,7 +6,7 @@ local player = Players.LocalPlayer
 local PLATFORM_NAME = "ETW_DRAMA_BIG_FF_TEST"
 
 local PLATFORM_SIZE = Vector3.new(350000, 10 ,350000)
-local PLATFORM_POSITION = Vector3.new(0, -40, 0)
+local PLATFORM_POSITION = Vector3.new(0, -20, 0)
 
 local platform = nil
 
@@ -15,7 +15,7 @@ local function removePlatform()
     if existing then
         pcall(function()
             existing:Destroy()
-        end)
+        end
     end
     platform = nil
 end
