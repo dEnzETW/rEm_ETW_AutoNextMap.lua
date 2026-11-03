@@ -1,7 +1,7 @@
 --[[
-    AUTO GRAB PLAYER - TEST V2
+    AUTO GRAB PLAYER - TEST V4
     - Select one player.
-    - Stay behind the selected player.
+    - Stay behind the selected player (corrected behind direction).
     - Reposition if target movement causes a miss (client-side positioning only).
     - Fire Character.Events.Grab ONCE.
     - Hold the attempt for 1.5 seconds.
@@ -9,7 +9,7 @@
     - No auto Eat, Throw, Candy scan, coin scan, or object targeting.
 
     IMPORTANT:
-    The 6-stud value is a client-side correction/proximity threshold.
+    The 6-stud value is a client-side position-correction threshold.
     It does NOT enlarge the game's server-side Grab hitbox/range.
     Successful carrying must be confirmed in-game.
 ]]
@@ -104,7 +104,7 @@ header.Parent = panel
 round(header, 12)
 
 makeLabel(
-    header, "AUTO GRAB PLAYER  •  TEST V2",
+    header, "AUTO GRAB PLAYER  •  TEST V4",
     UDim2.new(1, -38, 1, 0), UDim2.fromOffset(9, 0),
     9, C.white, Enum.Font.GothamBold
 )
@@ -219,7 +219,7 @@ end
 
 local function behindCFrame(targetRoot)
     local pos = targetRoot.Position
-        + targetRoot.CFrame.LookVector * BEHIND_DISTANCE
+        - targetRoot.CFrame.LookVector * BEHIND_DISTANCE
     return CFrame.lookAt(pos, targetRoot.Position)
 end
 
@@ -313,19 +313,21 @@ local function doGrabTest(target)
         setStatus("Grab dipanggil. Menjaga posisi belakang selama 1,5 detik...", C.yellow)
 
         local elapsed = 0
-        local lastTargetPosition = targetRoot.Position
 
         while elapsed < GRAB_WAIT and stillCurrent() do
             task.wait(TRACK_INTERVAL)
             elapsed += TRACK_INTERVAL
 
             local _, latestTargetRoot = getRoot(target)
-            if not latestTargetRoot then break end
+            local _, latestMyRoot = getRoot(LocalPlayer)
+            if not latestTargetRoot or not latestMyRoot then break end
 
-            local movedDistance = (latestTargetRoot.Position - lastTargetPosition).Magnitude
-            if movedDistance >= CORRECTION_RADIUS then
+            -- Correct only when our position has drifted more than 6 studs
+            -- from the current behind-target position.
+            local desiredBehind = behindCFrame(latestTargetRoot)
+            local drift = (latestMyRoot.Position - desiredBehind.Position).Magnitude
+            if drift > CORRECTION_RADIUS then
                 moveBehindTarget(target)
-                lastTargetPosition = latestTargetRoot.Position
             end
         end
 
