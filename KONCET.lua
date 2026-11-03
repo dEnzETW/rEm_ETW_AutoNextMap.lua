@@ -5,7 +5,7 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local PLATFORM_NAME = "ETW_DRAMA_BIG_FF_TEST"
 
-local PLATFORM_SIZE = Vector3.new(10000000,5000,10000000)
+local PLATFORM_SIZE = Vector3.new(250000,25000,250000)
 local PLATFORM_POSITION = Vector3.new(0, -6, 0)
 
 local platform = nil
