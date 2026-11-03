@@ -10,7 +10,7 @@ local player = Players.LocalPlayer
 local PLATFORM_NAME = "ETW_DRAMA_BIG_FF_TEST"
 
 local PLATFORM_SIZE = Vector3.new(500000, 10, 500000)
-local PLATFORM_POSITION = Vector3.new(0, -66, 0)
+local PLATFORM_POSITION = Vector3.new(0, -206, 0)
 
 local platform = nil
 
