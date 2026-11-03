@@ -17,7 +17,7 @@ local function removePlatform()
             existing:Destroy()
         end
     end
-    platform = nil
+    platform = ni2
 end
 
 local function createPlatform()
