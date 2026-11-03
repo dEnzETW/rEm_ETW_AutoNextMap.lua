@@ -1,3 +1,7 @@
+-- BIG FF TEST
+-- Standalone test for a very large platform.
+-- Platform size: 500000 x 10 x 500000 studs.
+-- Run in your own test environment. This script does not modify GELUT.lua.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -5,8 +9,8 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local PLATFORM_NAME = "ETW_DRAMA_BIG_FF_TEST"
 
-local PLATFORM_SIZE = Vector3.new(350000, 10 ,350000)
-local PLATFORM_POSITION = Vector3.new(0, -0, 0)
+local PLATFORM_SIZE = Vector3.new(500000, 10, 500000)
+local PLATFORM_POSITION = Vector3.new(0, -66, 0)
 
 local platform = nil
 
@@ -15,9 +19,9 @@ local function removePlatform()
     if existing then
         pcall(function()
             existing:Destroy()
-        end
+        end)
     end
-    platform = ni2
+    platform = nil
 end
 
 local function createPlatform()
